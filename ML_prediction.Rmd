@@ -1,0 +1,113 @@
+---
+title: "Prediction Assignment"
+author: "Jun Yitt, Cheah"
+date: "April 16, 2017"
+output: html_document
+---
+
+##Summary
+Firstly, the data and the necessary R packages were loaded. Then, we try to understand the nature of the data. We find out that most of the variables are numeric variables, and some variables have a lot of NA values. So, we filter the data by removing variables that have a lot of NA values or have a low variation.  
+Then, we partition our training data set into training set and validation set. Next, we begin training our model using random forest as our predictive algorithm on the training set. We validate our out-of-sample error rate by applying the model to predict the validation set. Low out-of-sample error rate was achieved on the validation set. Finally, we use our model to predict the test set and was able to achieve a 100% prediction accuracy.
+
+##Loading the Data and R Packages
+```{r, warning = F, message = F}
+
+setwd("C:/Users/User/Desktop")
+training <- read.csv("pml-training.csv", na.strings = c("NA","#DIV/0!",""))
+testing <- read.csv("pml-testing.csv", na.strings = c("NA","#DIV/0!",""))
+
+library(plyr);library(dplyr);library(ggplot2); library(caret)
+``` 
+
+
+##Understanding the Data
+```{r, comment = ""}
+nc <- ncol(training)
+str(training[,1:90])
+str(training[,91:nc])
+```
+
+There are `r nc-1` predictors and `r nrow(training)` observations. We observe that most predictors are numeric variables. 
+
+
+##Cleaning the Data
+We can perform some simple variable selection by removing columns that have more than 1% of NA values or absolute value of coefficient of variation of less than 50% (removing variables that have low variation). 
+Besides, the first 5 variables are not meaningful in predicting the outcome, i.e. "X", "user_name" and the 3 "timestamp" variables.
+```{r}
+
+cleandf <- function(df){
+      df <- df[,-c(1:5)] #remove X, user_name, and timestamp
+      cname <- colnames(df) 
+      
+      sub_cname_log <- sapply(cname, FUN = function(x){
+            if(x %in% "classe"){
+                  return(T)     
+            }else{
+                  df[,x] <<- as.numeric(df[,x])
+                  v <- df[,x]
+                  tf <- sum(is.na(v))/nrow(df) < 0.01 & abs(sd(v)/mean(v)) > 0.5
+                  return(tf)
+            }
+      })
+      return(df[sub_cname_log])
+}
+
+cdf.train1 <- cleandf(training); #clean the training data
+df1 <- cdf.train1  #creating backup
+
+nc2 <- ncol(cdf.train1)
+nc2 
+```
+
+The resulting data frame have `r nc2-1` predictors left. Now we can train our model.
+
+
+##Training the Model using Random Forest 
+###Data Partitioning
+First, we partition our training data into the training set and validation set, which comprises of 60% and 40% of the original training data respectively.  
+The training set will be used to train the model; the validation set will be used to validate the out-of-sample error rate of the model.
+```{r, cache = T}
+set.seed(123)
+intrain <- createDataPartition(y = df1$classe, p = 0.6, list = F) #60% training, 40% validation set
+trn0 <- df1[intrain,]; val0 <- df1[-intrain,]
+```
+
+###Training the Model
+Random forest is used to train the model, in favour of its prediction accuracy.
+```{r, cache = T, message=F, warning =F}
+model <- "fit1.RData"
+if (!file.exists(model)) { #To cache the training process
+      
+      system.time({
+                  fit1 <- train(classe ~ ., method = "rf", data = trn0) #training the model
+      })
+      save(fit1, file = "fit1.RData")
+
+} else {
+      # Good model exists from previous run, load it and use it.  
+      load(file = "fit1.RData", verbose = TRUE)
+}
+
+```
+
+##Predicting on the Validation Set using the Fitted Model
+```{r,message=F, warning =F, comment = ""}
+pred1 <- predict(fit1, val0)
+acc1 <- confusionMatrix(val0$classe, pred1)$overall[1] #Prediction accuracy
+
+confusionMatrix(val0$classe, pred1)
+
+```
+
+The prediction accuracy on the validation set is `r acc1`, hence the out-of-sample error rate is `r 1-acc1`, which is very satisfactory. No adjustment is needed, we can proceed to predict the test set.
+
+##Predicting on the Test Set using the Fitted Model
+Finally, we apply our model to predict the 20 test cases.
+```{r, comment = ""}
+pred2 <- predict(fit1, newdata = testing)
+print(data.frame(pred2))
+```
+
+The printed predictions are then used to verify against the "Course Project Prediction Quiz". 100% accuracy was obtained!
+
+
